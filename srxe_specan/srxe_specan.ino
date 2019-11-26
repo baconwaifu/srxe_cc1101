@@ -3,6 +3,12 @@
 #include "src/specan.h"
 #include <stdint.h>
 
+volatile int pstate = 0;
+
+void setPmode(){
+  pstate = 1; //tell the system we're going to sleep.
+}
+
 void poll_keyboard() {
   u8 vstep;
   u8 hstep;
@@ -129,6 +135,11 @@ void setup() {
   delay(100);
   Serial.println("Initialized radio!");
 
+  DDRB &= ~(1 << 2); //some fancy masking for setting PD2 to INPUT
+  PORTB |= (1 << 2); //and engage the pull-ups.
+
+  attachInterrupt(2, setPmode, LOW); //PORTD-2 is also INT2 and RXD1.
+
 }
 
 
@@ -172,6 +183,19 @@ void draw_frequency(){
   }
 }
 
+void suspend(){
+  pstate = 0; //reset the power state.
+  //NOTE: can potentially do wake-on-radio with the cc1101
+  cc101.Suspend();
+  //FIXME: suspend hooks for radio.
+  void SRXESleep(void); //powers down the LCD, and handles suspending the micro.
+}
+
+void resume(){ 
+  //SRXESleep already handles kicking the internals back into shape for us,
+  //so we only need to kick the radio.
+}
+
 void plotch(uint8_t ch){
 
   uint8_t ss = 0;
@@ -209,6 +233,11 @@ void plotch(uint8_t ch){
 void loop() {
 
   uint8_t ch = 0; 
+
+  if (pstate == 1) { //power button pushed. suspend!
+    suspend();
+    resume();
+  }
 
   if (user_freq != center_freq){
     user_freq = set_center_freq(user_freq);
